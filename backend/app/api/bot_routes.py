@@ -5,7 +5,7 @@ from datetime import datetime
 router = APIRouter(prefix="/bot", tags=["Bot de Inteligência Artificial"])
 
 # Coloque aqui sua chave real do DeepSeek
-DEEPSEEK_API_KEY = "sk-2fd92362cfc64183b0ea1eab2aba1994"
+DEEPSEEK_API_KEY = ""
 
 # --- Funções Auxiliares (O Filtro) ---
 
