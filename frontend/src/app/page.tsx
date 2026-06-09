@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Camera, Star, X, Send } from 'lucide-react';
+import { Camera } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
 
 import ImageSlider from '../components/ImageSlider';
 import ReviewsSummary from '../components/ReviewsSummary';
 import LocationMap from '../components/LocationMap';
 import FloatingBookingBtn from '../components/FloatingBookingBtn';
+import ProductCarousel from '../components/ProductCarousel';
 
 interface Post {
   id: number;
@@ -30,39 +31,66 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [reviewsMap, setReviewsMap] = useState<Record<number, PostReview[]>>({});
   
+  const [companyId, setCompanyId] = useState<number | null>(null);
+  const [companyName, setCompanyName] = useState<string>('Carregando...');
+  const [companyStatus, setCompanyStatus] = useState<'trial' | 'active' | 'suspended' | 'unknown'>('unknown');
+
+  // Guarda a Logo da Barbearia
+  const [companyLogo, setCompanyLogo] = useState<string | null>(null);
+
   const [ratingModal, setRatingModal] = useState<{ postId: number; open: boolean }>({ postId: 0, open: false });
   const [selectedRating, setSelectedRating] = useState(0);
-  const [hoverRating, setHoverRating] = useState(0);
   const [customerName, setCustomerName] = useState('');
   const [submittingRating, setSubmittingRating] = useState(false);
   const [ratingSuccess, setRatingSuccess] = useState('');
 
-  const fetchApprovedReviews = async (postId: number) => {
-    try {
-      // CORRIGIDO: Agora aponta para a rota de reviews correta
-      const res = await fetch(`${API_BASE_URL}/post-reviews/?post_id=${postId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setReviewsMap(prev => ({ ...prev, [postId]: data || [] }));
-      }
-    } catch (err) {
-      console.error(`Erro ao buscar reviews do post ${postId}:`, err);
+  useEffect(() => {
+    const hostname = window.location.hostname;
+    let sub = 'mariobarber'; 
+    
+    if (hostname.includes('lvh.me')) {
+      sub = hostname.replace('.lvh.me', '');
+    } else if (hostname !== 'localhost' && hostname.includes('.')) {
+      sub = hostname.split('.')[0];
     }
-  };
 
-  const fetchAllReviews = async (postIds: number[]) => {
-    await Promise.all(postIds.map(id => fetchApprovedReviews(id)));
-  };
+    fetch(`${API_BASE_URL}/system/companies/lookup?subdomain=${sub}`)
+      .then(res => {
+        if (!res.ok) throw new Error("Empresa não encontrada");
+        return res.json();
+      })
+      .then(data => {
+        setCompanyId(data.id);
+        if (data.name) setCompanyName(data.name); 
+        if (data.logo_url) setCompanyLogo(data.logo_url);
+        setCompanyStatus(data.status || 'active');
+      })
+      .catch(err => {
+        console.error("Erro ao descobrir empresa:", err);
+        setCompanyName('Empresa não encontrada');
+        setPosts([]);
+        setLoading(false); 
+      });
+  }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/feed/`)
+    if (companyId === null) return; 
+    if (companyStatus !== 'active') return;
+
+    fetch(`${API_BASE_URL}/feed/?company_id=${companyId}`)
       .then((res) => res.json())
       .then((data) => {
-        const postsData = data || [];
+        const postsData = Array.isArray(data) ? data : []; 
         setPosts(postsData);
         setLoading(false);
         if (postsData.length > 0) {
-          fetchAllReviews(postsData.map((p: Post) => p.id));
+          void Promise.all(postsData.map(async (post: Post) => {
+            const res = await fetch(`${API_BASE_URL}/post-reviews/?post_id=${post.id}&company_id=${companyId}`);
+            if (res.ok) {
+              const reviews = await res.json();
+              setReviewsMap((prev) => ({ ...prev, [post.id]: Array.isArray(reviews) ? reviews : [] }));
+            }
+          }));
         }
       })
       .catch((err) => {
@@ -70,12 +98,11 @@ export default function Home() {
         setPosts([]);
         setLoading(false);
       });
-  }, []);
+  }, [companyId, companyStatus]);
 
   const handleOpenRating = (postId: number) => {
     setRatingModal({ postId, open: true });
     setSelectedRating(0);
-    setHoverRating(0);
     setCustomerName('');
     setRatingSuccess('');
   };
@@ -95,6 +122,7 @@ export default function Home() {
           post_id: ratingModal.postId,
           customer_name: name,
           rating: selectedRating,
+          company_id: companyId 
         }),
       });
       if (res.ok) {
@@ -112,83 +140,140 @@ export default function Home() {
     }
   };
 
-  return (
-    <div className="min-h-screen text-white antialiased flex items-center justify-center bg-black">
-      <main className="phone-container relative">
-        <header className="bg-black border-b border-white/[0.04] h-20 flex items-center px-5 shrink-0 z-40 sm:rounded-t-[30px]">
-          <div className="w-full grid grid-cols-3 items-center relative">
-            <div />
-            <div className="flex items-center justify-center">
-              <h1 className="font-unifraktur text-[30px] sm:text-[34px] tracking-[0.03em] leading-none text-center">
-                <span className="bg-gradient-to-b from-amber-200 via-amber-100 to-zinc-300 bg-clip-text text-transparent drop-shadow-[0_2px_6px_rgba(251,191,36,0.35)]">
-                  Flux Barber
-                </span>
-              </h1>
-            </div>
-            <div className="flex justify-end items-center gap-2">
-              <span className="relative flex w-3 h-3">
-                <span className="absolute inline-flex w-full h-full rounded-full bg-emerald-400 opacity-60 animate-ping" />
-                <span className="relative inline-flex w-3 h-3 rounded-full bg-emerald-400" />
-              </span>
-            </div>
+  if (companyStatus !== 'unknown' && companyStatus !== 'active') {
+    return (
+      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center px-6">
+        <div className="max-w-xl w-full text-center bg-[#0A0A0A] border border-rose-500/20 rounded-3xl p-8 space-y-4">
+          <h1 className="text-3xl font-bold text-rose-400">Acesso temporariamente indisponível</h1>
+          <p className="text-zinc-300 leading-7">
+            Esta barbearia está com o plano expirado ou suspenso.
+            <br />
+            Solicite ao administrador para regularizar o acesso.
+          </p>
+          <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+            Status atual: {companyStatus}
           </div>
-        </header>
+        </div>
+      </div>
+    );
+  }
 
-        <div className="flex-1 overflow-y-auto space-y-7 p-5 pb-28 scrollbar-none scroll-smooth">
-          <ImageSlider />
-          <ReviewsSummary />
-          <LocationMap />
-          <FloatingBookingBtn />
+  return (
+    <div className="min-h-screen text-white antialiased flex items-center justify-center bg-[#050505] relative overflow-hidden">
+        
+        {/* Glow Background */}
+        <div className="absolute inset-0 z-0">
+            <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+            <div className="absolute left-0 right-0 top-0 -z-10 m-auto h-[310px] w-[310px] rounded-full bg-violet-600 opacity-10 blur-[120px]"></div>
+        </div>
 
-          <section className="space-y-4">
-            <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-2 text-zinc-300 text-[11px] font-semibold uppercase tracking-[0.2em]">
-                <div className="w-6 h-6 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                  <Camera size={12} className="text-blue-400" />
+        <main className="w-full max-w-[480px] lg:max-w-6xl mx-auto relative z-10 flex flex-col min-h-screen shadow-2xl bg-[#050505]/50 md:bg-transparent">
+          
+          <header className="bg-black/40 backdrop-blur-md border-b border-white/[0.04] h-20 flex items-center px-4 shrink-0 z-40 lg:rounded-b-3xl relative">
+            <div className="w-full flex items-center justify-between h-full relative">
+              
+              {/* 👇 LADO ESQUERDO: A LOGO DA EMPRESA 👇 */}
+              <div className="flex items-center h-full py-2 z-10 w-1/3">
+                {companyLogo && (
+                  <img 
+                    src={companyLogo} 
+                    alt={`Logo`} 
+                    className="h-full w-auto max-w-[120px] object-contain drop-shadow-[0_0_10px_rgba(139,92,246,0.3)] transition-transform duration-300 hover:scale-105"
+                  />
+                )}
+              </div>
+
+              {/* 👇 CENTRO: O NOME DA EMPRESA 👇 */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+                <h1 className="font-unifraktur text-[26px] sm:text-[30px] tracking-[0.03em] leading-none text-center">
+                  <span className="bg-gradient-to-b from-violet-200 via-violet-100 to-zinc-300 bg-clip-text text-transparent drop-shadow-[0_2px_6px_rgba(139,92,246,0.35)]">
+                    {companyName}
+                  </span>
+                </h1>
+              </div>
+
+              {/* 👇 LADO DIREITO: SINAL VERDE 👇 */}
+              <div className="flex justify-end items-center gap-2 z-10 w-1/3">
+                <span className="relative flex w-2.5 h-2.5 sm:w-3 sm:h-3">
+                  <span className="absolute inline-flex w-full h-full rounded-full bg-emerald-400 opacity-60 animate-ping" />
+                  <span className="relative inline-flex w-full h-full rounded-full bg-emerald-400" />
+                </span>
+              </div>
+
+            </div>
+          </header>
+
+          <div className="flex-1 overflow-y-auto p-5 md:p-8 lg:p-10 pb-28 scrollbar-none scroll-smooth">
+            
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 mb-8">
+              <div className="lg:col-span-7 flex flex-col gap-6 md:gap-8">
+                <ImageSlider />
+                <div className="hidden lg:block">
+                  <ProductCarousel />
                 </div>
-                <span>Trabalhos Recentes</span>
+              </div>
+
+              <div className="lg:col-span-5 flex flex-col gap-6 md:gap-8">
+                <ReviewsSummary companyId={companyId} />
+                <LocationMap />
               </div>
             </div>
 
-            <div className="posts-grid">
-              {loading ? (
-                <div className="col-span-full flex flex-col items-center justify-center py-10 gap-3">
-                  <div className="w-8 h-8 rounded-full border-2 border-zinc-800 border-t-blue-500 animate-spin" />
-                  <p className="text-center text-zinc-600 text-xs">Carregando fotos...</p>
-                </div>
-              ) : posts.length === 0 ? (
-                <div className="col-span-full bg-zinc-900/30 border border-dashed border-zinc-800 rounded-2xl p-10 text-center text-zinc-500 text-xs">
-                  Nenhum corte publicado pela barbearia ainda. 💈
-                </div>
-              ) : (
-                posts.map((post) => (
-                  <div key={post.id} className="group relative bg-black border border-white/[0.06] rounded-3xl overflow-hidden hover:border-blue-500/30 transition-all duration-500">
-                    <div className="aspect-square w-full bg-zinc-900 relative overflow-hidden">
-                      <img src={post.image_url} alt="Trabalho" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent pointer-events-none" />
-                    </div>
-                    <div className="p-5 space-y-4">
-                      {reviewsMap[post.id] && reviewsMap[post.id].length > 0 && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-zinc-500">{reviewsMap[post.id].length} avaliações</span>
-                        </div>
-                      )}
-                      {post.caption && <p className="text-[13px] leading-relaxed text-zinc-300 font-light">{post.caption}</p>}
-                      <button onClick={() => handleOpenRating(post.id)} className="w-full py-3 bg-gradient-to-b from-zinc-800/80 to-zinc-900 text-[11px] font-semibold tracking-wider uppercase text-zinc-200 border border-white/[0.08] rounded-2xl transition-all duration-300">
-                        ⭐ Deixar uma avaliação
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-        </div>
+            <FloatingBookingBtn />
 
-        {ratingModal.open && (
-           /* ... modal de avaliação mantido igual ... */
-           <></> 
-        )}
+            <div className="block lg:hidden mt-8 mb-6">
+              <ProductCarousel />
+            </div>
+
+            <section className="space-y-6 mt-6 lg:mt-10">
+              <div className="flex items-center justify-between px-1 border-b border-white/[0.05] pb-4">
+                <div className="flex items-center gap-3 text-zinc-300 text-xs font-bold uppercase tracking-[0.2em]">
+                  <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                    <Camera size={16} className="text-blue-400" />
+                  </div>
+                  <span>Trabalhos Recentes</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {loading ? (
+                  <div className="col-span-full flex flex-col items-center justify-center py-20 gap-4">
+                    <div className="w-10 h-10 rounded-full border-2 border-zinc-800 border-t-violet-500 animate-spin" />
+                    <p className="text-center text-zinc-600 text-sm">Carregando portfólio...</p>
+                  </div>
+                ) : !Array.isArray(posts) || posts.length === 0 ? (
+                  <div className="col-span-full bg-zinc-900/30 border border-dashed border-zinc-800 rounded-3xl p-16 text-center text-zinc-500 text-sm">
+                    Nenhum corte publicado por essa barbearia ainda. 💈
+                  </div>
+                ) : (
+                  posts.map((post) => (
+                    <div key={post.id} className="group relative bg-black/40 backdrop-blur-sm border border-white/[0.06] rounded-3xl overflow-hidden hover:border-violet-500/30 transition-all duration-500 flex flex-col h-full">
+                      <div className="aspect-square w-full bg-zinc-900 relative overflow-hidden shrink-0">
+                        <img src={post.image_url} alt="Trabalho" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none" />
+                      </div>
+                      <div className="p-5 space-y-4 flex flex-col flex-1 justify-between bg-zinc-950/50">
+                        <div>
+                          {reviewsMap[post.id] && reviewsMap[post.id].length > 0 && (
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-[10px] uppercase font-bold tracking-widest text-violet-400 bg-violet-500/10 px-2 py-1 rounded-md">
+                                {reviewsMap[post.id].length} Avaliações
+                              </span>
+                            </div>
+                          )}
+                          {post.caption && <p className="text-sm leading-relaxed text-zinc-300">{post.caption}</p>}
+                        </div>
+                        <button onClick={() => handleOpenRating(post.id)} className="w-full mt-4 py-3.5 bg-white/5 hover:bg-violet-600 text-[11px] font-bold tracking-[0.1em] uppercase text-zinc-300 hover:text-white border border-white/[0.08] rounded-2xl transition-all duration-300">
+                          ⭐ Deixar uma avaliação
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+          </div>
       </main>
     </div>
   );

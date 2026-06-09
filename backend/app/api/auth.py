@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session
@@ -5,7 +7,8 @@ from sqlmodel import Session
 from app.core.database import get_session
 from app.services.auth_service import authenticate_user
 from app.core.security import create_access_token, get_password_hash
-from app.models import Company, CompanyCreate, User, UserRole
+from app.services.billing_service import sync_company_billing_state
+from app.models import Company, CompanyCreate, TenantStatus, User, UserRole
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -36,15 +39,22 @@ def login(
         }
     )
 
+    company = session.get(Company, user.company_id)
+    if company:
+        company = sync_company_billing_state(company, session)
+    tenant_status = company.status if company else TenantStatus.SUSPENDED
+
     return {
         "access_token": access_token,
         "token_type": "bearer",
         "user": {
-            "id": user.id,
-            "name": user.name,
-            "email": user.email,
-            "role": user.role,
-        },
+                    "id": user.id,
+                    "name": user.name,
+                    "email": user.email,
+                    "role": user.role,
+                    "company_id": user.company_id,
+                },
+        "tenant_status": tenant_status,
     }
 
 
@@ -55,7 +65,15 @@ def register_company(data: CompanyCreate, session: Session = Depends(get_session
     Retorna o subdomain da empresa criada.
     """
     # 1. Criar a empresa
-    new_company = Company(name=data.company_name, subdomain=data.subdomain)
+    trial_end = datetime.now(timezone.utc) + timedelta(days=7)
+    new_company = Company(
+        name=data.company_name,
+        subdomain=data.subdomain,
+        status=TenantStatus.TRIAL,
+        trial_end=trial_end,
+        subscription_end=datetime.now(timezone.utc) + timedelta(days=30),
+        is_active=True,
+    )
     session.add(new_company)
     session.commit()
     session.refresh(new_company)

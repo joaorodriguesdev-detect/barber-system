@@ -1,7 +1,11 @@
 'use client';
 import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { CalendarDays, Clock, Scissors, Phone, User, CheckCircle, ArrowLeft, MessageCircle } from 'lucide-react';
+import { API_BASE_URL } from '@/lib/api';
+import { 
+  CalendarDays, Clock, Scissors, Phone, User, 
+  CheckCircle, ArrowLeft, MessageCircle, Bot, Sparkles, MessageSquare 
+} from 'lucide-react';
 
 interface Service {
   id: number;
@@ -15,14 +19,11 @@ export default function AgendamentoPage() {
   const router = useRouter();
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Step
+  
+  const [companyId, setCompanyId] = useState<number | null>(null);
   const [step, setStep] = useState<'services' | 'dados' | 'confirmacao'>('services');
-
-  // Seleção
   const [selectedService, setSelectedService] = useState<Service | null>(null);
 
-  // Dados do cliente
   const [nome, setNome] = useState('');
   const [telefone, setTelefone] = useState('');
   const [data, setData] = useState('');
@@ -32,23 +33,53 @@ export default function AgendamentoPage() {
   const [sucesso, setSucesso] = useState(false);
   const [whatsappLink, setWhatsappLink] = useState('');
 
-  // Número do WhatsApp do admin (barbeiro) - ALTERE AQUI
-  const ADMIN_WHATSAPP = '5511999999999';
+  const ADMIN_WHATSAPP = '5541995707907';
+
+  // 👇 DETETIVE SAAS NATIVO (Extração do Subdomínio) 👇
+  useEffect(() => {
+    const hostname = window.location.hostname;
+    let sub = 'mariobarber'; 
+    
+    // Leitura inteligente
+    if (hostname.includes('lvh.me')) {
+      sub = hostname.replace('.lvh.me', '');
+    } else if (hostname !== 'localhost' && hostname.includes('.')) {
+      sub = hostname.split('.')[0];
+    }
+
+    fetch(`${API_BASE_URL}/system/companies/lookup?subdomain=${sub}`)
+      .then(res => {
+        if (!res.ok) throw new Error("Empresa não encontrada");
+        return res.json();
+      })
+      .then(data => {
+        setCompanyId(data.id); 
+      })
+      .catch(err => {
+        console.error("Erro ao descobrir empresa:", err);
+        setLoading(false);
+      });
+  }, []);
 
   useEffect(() => {
-    fetch('http://192.168.1.1:8000/services/')
-      .then((res) => res.json())
+    if (companyId === null) return; 
+
+    setLoading(true);
+    fetch(`${API_BASE_URL}/services/?company_id=${companyId}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Erro no backend');
+        return res.json();
+      })
       .then((data) => {
-        setServices(data || []);
+        setServices(Array.isArray(data) ? data : []);
         setLoading(false);
       })
       .catch(() => {
         setServices([]);
         setLoading(false);
       });
-  }, []);
+  }, [companyId]);
 
-  // Gera as próximas 14 dias como opções de data
   const gerarDatas = () => {
     const datas: { value: string; label: string }[] = [];
     const hoje = new Date();
@@ -64,7 +95,6 @@ export default function AgendamentoPage() {
     return datas;
   };
 
-  // Gera horários disponíveis (08:00 às 18:00)
   const gerarHorarios = () => {
     const horarios: string[] = [];
     for (let h = 8; h <= 17; h++) {
@@ -97,26 +127,26 @@ export default function AgendamentoPage() {
   };
 
   const handleConfirmar = async () => {
-    if (!selectedService) return;
+    if (!selectedService || companyId === null) return;
     setEnviando(true);
 
     const appointmentDate = new Date(`${data}T${hora}:00`);
 
     try {
-      const res = await fetch('http://192.168.1.1:8000/appointments', {
+      const res = await fetch(`${API_BASE_URL}/appointments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customer_id: 2, // cliente genérico
-          barber_id: 1,   // único barbeiro (admin)
+          company_id: companyId,
           service_id: selectedService.id,
           appointment_date: appointmentDate.toISOString(),
-          notes: `Cliente: ${nome} - Tel: ${telefone}`,
+          customer_name: nome,
+          customer_phone: telefone,
+          notes: `Agendamento efetuado via site`,
         }),
       });
 
       if (res.ok) {
-        // Gera link do WhatsApp
         const dataFormatada = new Date(data + 'T12:00:00').toLocaleDateString('pt-BR');
         const mensagem = `🪒 *Novo Agendamento!*\n\n👤 *Cliente:* ${nome}\n📞 *Tel:* ${telefone}\n✂️ *Serviço:* ${selectedService.name}\n💰 *Valor:* R$ ${selectedService.price.toFixed(2)}\n📅 *Data:* ${dataFormatada}\n⏰ *Horário:* ${hora}\n\n✅ Aguardando aprovação no painel!`;
         const link = `https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(mensagem)}`;
@@ -124,10 +154,10 @@ export default function AgendamentoPage() {
         setSucesso(true);
       } else {
         const err = await res.json();
-        alert(err.detail || 'Erro ao agendar.');
+        alert("Erro retornado pelo servidor: " + JSON.stringify(err.detail || err, null, 2));
       }
     } catch {
-      alert('Erro de conexão com o servidor.');
+      alert('Erro de conexão com o servidor. Verifique se o backend está rodando.');
     } finally {
       setEnviando(false);
     }
@@ -137,8 +167,8 @@ export default function AgendamentoPage() {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
         <div className="text-center space-y-6 max-w-sm">
-          <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto">
-            <CheckCircle size={32} className="text-green-400" />
+          <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto">
+            <CheckCircle size={32} className="text-emerald-400" />
           </div>
           <div>
             <h1 className="text-xl font-bold">Agendamento Enviado!</h1>
@@ -149,7 +179,7 @@ export default function AgendamentoPage() {
             href={whatsappLink}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-2xl transition-all active:scale-[0.98]"
+            className="w-full inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-2xl transition-all active:scale-[0.98]"
           >
             <MessageCircle size={20} />
             Falar com o Barbeiro
@@ -161,8 +191,6 @@ export default function AgendamentoPage() {
           >
             Voltar para Home
           </button>
-
-          <p className="text-zinc-600 text-xs">O barbeiro foi notificado sobre seu agendamento.</p>
         </div>
       </div>
     );
@@ -170,7 +198,6 @@ export default function AgendamentoPage() {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Header */}
       <header className="bg-black border-b border-white/[0.06] h-16 flex items-center px-5 sticky top-0 z-40">
         <div className="flex items-center gap-3 w-full">
           <button onClick={() => step === 'services' ? router.push('/') : handleVoltar()} className="text-zinc-400 hover:text-white transition">
@@ -179,36 +206,62 @@ export default function AgendamentoPage() {
           <div>
             <h1 className="text-sm font-bold">Agendar Horário</h1>
             <p className="text-[10px] text-zinc-500">
-              {step === 'services' && 'Escolha um serviço'}
+              {step === 'services' && 'Escolha como deseja agendar'}
               {step === 'dados' && 'Seus dados'}
               {step === 'confirmacao' && 'Confirme o agendamento'}
             </p>
           </div>
-          {/* Steps indicator */}
           <div className="ml-auto flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${step === 'services' ? 'bg-blue-500' : 'bg-zinc-700'}`} />
-            <span className={`w-2 h-2 rounded-full ${step === 'dados' ? 'bg-blue-500' : 'bg-zinc-700'}`} />
-            <span className={`w-2 h-2 rounded-full ${step === 'confirmacao' ? 'bg-blue-500' : 'bg-zinc-700'}`} />
+            <span className={`w-2 h-2 rounded-full ${step === 'services' ? 'bg-amber-500' : 'bg-zinc-700'}`} />
+            <span className={`w-2 h-2 rounded-full ${step === 'dados' ? 'bg-amber-500' : 'bg-zinc-700'}`} />
+            <span className={`w-2 h-2 rounded-full ${step === 'confirmacao' ? 'bg-amber-500' : 'bg-zinc-700'}`} />
           </div>
         </div>
       </header>
 
-      {/* CONTEÚDO */}
       <div className="p-5 space-y-4">
-
-        {/* PASSO 1: LISTA DE SERVIÇOS */}
         {step === 'services' && (
-          <>
-            <p className="text-xs text-zinc-500">Selecione o serviço desejado:</p>
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="mb-8">
+              <div className="relative group cursor-pointer">
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-emerald-500 via-green-500 to-teal-400 rounded-2xl blur opacity-30 group-hover:opacity-60 transition duration-500"></div>
+                <a
+                  href={`https://wa.me/${ADMIN_WHATSAPP}?text=Oi! Gostaria de agendar um horário.`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative flex flex-col items-center justify-center gap-3 bg-zinc-950 border border-white/10 p-6 rounded-2xl hover:bg-zinc-900 transition-all active:scale-[0.98]"
+                >
+                  <div className="flex items-center justify-center w-14 h-14 rounded-full bg-emerald-500/10 mb-1 border border-emerald-500/20">
+                    <Bot size={28} className="text-emerald-400 animate-pulse" />
+                  </div>
+                  <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
+                    Atendimento com IA <Sparkles size={18} className="text-amber-400" />
+                  </h2>
+                  <p className="text-sm text-zinc-400 text-center leading-relaxed px-2">
+                    Sem filas, sem formulários. Nossa IA agenda seu horário direto no WhatsApp em segundos!
+                  </p>
+                  <div className="mt-3 flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider bg-emerald-500/10 px-5 py-2.5 rounded-full border border-emerald-500/20">
+                    <MessageSquare size={16} />
+                    Agendar pelo WhatsApp
+                  </div>
+                </a>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 mb-6 opacity-60">
+              <div className="h-px bg-gradient-to-r from-transparent to-zinc-700 flex-1"></div>
+              <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Ou escolha manualmente</span>
+              <div className="h-px bg-gradient-to-l from-transparent to-zinc-700 flex-1"></div>
+            </div>
 
             {loading ? (
               <div className="text-center py-10">
-                <div className="w-8 h-8 rounded-full border-2 border-zinc-800 border-t-blue-500 animate-spin mx-auto mb-3" />
-                <p className="text-zinc-500 text-sm">Carregando serviços...</p>
+                <div className="w-8 h-8 rounded-full border-2 border-zinc-800 border-t-amber-500 animate-spin mx-auto mb-3" />
+                <p className="text-zinc-500 text-sm">Carregando cardápio...</p>
               </div>
             ) : services.length === 0 ? (
-              <div className="text-center py-10 text-zinc-500 text-sm">
-                Nenhum serviço disponível no momento.
+              <div className="text-center py-10 text-zinc-500 text-sm bg-zinc-900/30 rounded-2xl border border-zinc-800/50">
+                Nenhum serviço disponível para esta barbearia.
               </div>
             ) : (
               <div className="space-y-3">
@@ -216,45 +269,43 @@ export default function AgendamentoPage() {
                   <button
                     key={svc.id}
                     onClick={() => handleSelecionarServico(svc)}
-                    className="w-full text-left bg-zinc-900/50 border border-zinc-800 hover:border-blue-500/40 rounded-2xl p-5 transition-all duration-300 hover:scale-[1.01] active:scale-[0.99] group"
+                    className="w-full text-left bg-zinc-900/40 border border-zinc-800 hover:border-amber-500/40 hover:bg-zinc-800/50 rounded-2xl p-4 transition-all duration-300 active:scale-[0.99] group"
                   >
                     <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Scissors size={15} className="text-blue-400" />
-                          <h3 className="font-bold text-sm">{svc.name}</h3>
+                      <div className="flex-1 min-w-0 pr-4">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <Scissors size={14} className="text-amber-500/70" />
+                          <h3 className="font-bold text-sm text-zinc-100">{svc.name}</h3>
                         </div>
-                        <p className="text-xs text-zinc-500 mt-0.5">{svc.description}</p>
-                        <div className="flex items-center gap-3 mt-2">
-                          <span className="text-xs text-zinc-600 flex items-center gap-1">
-                            <Clock size={11} />
-                            {svc.duration_minutes}min
+                        <p className="text-xs text-zinc-500 line-clamp-2">{svc.description}</p>
+                        <div className="flex items-center gap-3 mt-3">
+                          <span className="text-[10px] text-zinc-400 font-medium bg-zinc-800/80 px-2 py-1 rounded-md flex items-center gap-1.5">
+                            <Clock size={10} />
+                            {svc.duration_minutes} min
                           </span>
                         </div>
                       </div>
-                      <div className="text-right ml-4">
-                        <p className="text-lg font-bold text-green-500">R$ {svc.price.toFixed(2)}</p>
-                        <p className="text-[10px] text-zinc-600 mt-0.5">a partir de</p>
+                      <div className="text-right flex flex-col items-end justify-center h-full pt-1">
+                        <p className="text-[10px] text-zinc-500 mb-0.5 uppercase tracking-wide">A partir de</p>
+                        <p className="text-base font-bold text-white">R$ {svc.price.toFixed(2)}</p>
                       </div>
                     </div>
                   </button>
                 ))}
               </div>
             )}
-          </>
+          </div>
         )}
 
-        {/* PASSO 2: DADOS DO CLIENTE */}
         {step === 'dados' && selectedService && (
-          <form onSubmit={handleContinuarDados} className="space-y-4">
-            {/* Resumo do serviço selecionado */}
+          <form onSubmit={handleContinuarDados} className="space-y-4 animate-in slide-in-from-right-4 duration-300">
             <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Scissors size={15} className="text-blue-400" />
+                  <Scissors size={15} className="text-amber-500" />
                   <span className="font-semibold text-sm">{selectedService.name}</span>
                 </div>
-                <span className="text-green-500 font-bold">R$ {selectedService.price.toFixed(2)}</span>
+                <span className="text-white font-bold">R$ {selectedService.price.toFixed(2)}</span>
               </div>
             </div>
 
@@ -267,8 +318,8 @@ export default function AgendamentoPage() {
                 required
                 value={nome}
                 onChange={(e) => setNome(e.target.value)}
-                placeholder="Digite seu nome"
-                className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500/50 transition"
+                placeholder="Como gosta de ser chamado?"
+                className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 transition"
               />
             </div>
 
@@ -282,7 +333,7 @@ export default function AgendamentoPage() {
                 value={telefone}
                 onChange={(e) => setTelefone(e.target.value)}
                 placeholder="(41) 99999-0000"
-                className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500/50 transition"
+                className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 transition"
               />
             </div>
 
@@ -295,7 +346,7 @@ export default function AgendamentoPage() {
                   required
                   value={data}
                   onChange={(e) => setData(e.target.value)}
-                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500/50 transition"
+                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-amber-500/50 transition"
                 >
                   <option value="">Selecione</option>
                   {gerarDatas().map((d) => (
@@ -312,7 +363,7 @@ export default function AgendamentoPage() {
                   required
                   value={hora}
                   onChange={(e) => setHora(e.target.value)}
-                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500/50 transition"
+                  className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-amber-500/50 transition"
                 >
                   <option value="">Selecione</option>
                   {gerarHorarios().map((h) => (
@@ -324,74 +375,61 @@ export default function AgendamentoPage() {
 
             <button
               type="submit"
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-colors mt-2 active:scale-[0.99]"
+              className="w-full py-4 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl transition-colors mt-4 active:scale-[0.99]"
             >
               Continuar
             </button>
           </form>
         )}
 
-        {/* PASSO 3: CONFIRMAÇÃO */}
         {step === 'confirmacao' && selectedService && (
-          <div className="space-y-6">
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 space-y-4">
-              <h2 className="text-lg font-bold text-center">Confirme seu Agendamento</h2>
+          <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+            <div className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-6 space-y-5">
+              <h2 className="text-lg font-bold text-center">Resumo do Agendamento</h2>
 
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-400">Serviço:</span>
-                  <span className="font-medium">{selectedService.name}</span>
+              <div className="space-y-3.5">
+                <div className="flex justify-between items-center text-sm border-b border-zinc-800/50 pb-3">
+                  <span className="text-zinc-500">Serviço</span>
+                  <span className="font-medium text-right max-w-[60%]">{selectedService.name}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-400">Valor:</span>
-                  <span className="font-bold text-green-500">R$ {selectedService.price.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-400">Cliente:</span>
+                <div className="flex justify-between items-center text-sm border-b border-zinc-800/50 pb-3">
+                  <span className="text-zinc-500">Cliente</span>
                   <span className="font-medium">{nome}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-400">Telefone:</span>
-                  <span className="font-medium">{telefone}</span>
+                <div className="flex justify-between items-center text-sm border-b border-zinc-800/50 pb-3">
+                  <span className="text-zinc-500">Data e Hora</span>
+                  <span className="font-medium text-amber-400">
+                    {new Date(data + 'T12:00:00').toLocaleDateString('pt-BR')} às {hora}
+                  </span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-400">Data:</span>
-                  <span className="font-medium">{new Date(data + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-400">Horário:</span>
-                  <span className="font-medium">{hora}</span>
+                <div className="flex justify-between items-center pt-1">
+                  <span className="text-zinc-400 font-medium">Total a pagar</span>
+                  <span className="font-extrabold text-xl text-white">R$ {selectedService.price.toFixed(2)}</span>
                 </div>
               </div>
-
-              <hr className="border-zinc-800" />
-
-              <p className="text-xs text-zinc-500 text-center">
-                Ao confirmar, seu agendamento será enviado para aprovação do administrador.
-              </p>
             </div>
 
             <div className="flex gap-3">
               <button
                 onClick={handleVoltar}
-                className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 py-3 text-sm text-zinc-400 hover:text-white transition-colors"
+                className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900/50 py-4 text-sm font-semibold text-zinc-300 hover:text-white hover:bg-zinc-800 transition-all"
               >
                 Voltar
               </button>
               <button
                 onClick={handleConfirmar}
                 disabled={enviando}
-                className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-60"
+                className="flex-[2] flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 text-white font-bold py-4 rounded-xl transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {enviando ? (
                   <>
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Enviando...
+                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Confirmando...
                   </>
                 ) : (
                   <>
-                    <CheckCircle size={16} />
-                    Confirmar
+                    <CheckCircle size={18} />
+                    Confirmar Horário
                   </>
                 )}
               </button>

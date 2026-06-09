@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Star, X, ThumbsUp, Clock, Send } from 'lucide-react';
+import { API_BASE_URL } from '@/lib/api'; 
 
 interface Review {
   id: number;
@@ -10,7 +11,12 @@ interface Review {
   created_at: string;
 }
 
-export default function ReviewsSummary() {
+// 👇 Agora ele recebe o ID certo da empresa dinamicamente!
+interface ReviewsSummaryProps {
+  companyId: number | null;
+}
+
+export default function ReviewsSummary({ companyId }: ReviewsSummaryProps) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -25,35 +31,40 @@ export default function ReviewsSummary() {
   const [comment, setComment] = useState('');
 
   const fetchReviews = async () => {
+    if (!companyId) return; 
+    
     setLoading(true);
     try {
-      const res = await fetch('http://192.168.1.1:8000/reviews/', {
-        cache: 'no-cache'
+      const res = await fetch(`${API_BASE_URL}/reviews/?company_id=${companyId}`, {
+        cache: 'no-store'
       });
       if (res.ok) {
         const data = await res.json();
-        setReviews(data);
+        setReviews(Array.isArray(data) ? data : []);
       }
     } catch {
-      // silencia
+      // silencia o erro
     } finally {
       setLoading(false);
     }
   };
 
-    // Carrega as avaliações ao montar o componente
   useEffect(() => {
-    fetchReviews();
-  }, []);
+    if (companyId) {
+      fetchReviews();
+    }
+  }, [companyId]);
 
   const openModal = async () => {
     setShowModal(true);
     setShowForm(false);
     setSuccessMsg('');
-    await fetchReviews(); // atualiza ao abrir modal também
+    await fetchReviews(); 
   };
 
   const handleSubmit = async () => {
+    if (!companyId) return;
+    
     if (!customerName.trim() || rating === 0 || !comment.trim()) {
       alert('Preencha todos os campos.');
       return;
@@ -62,9 +73,10 @@ export default function ReviewsSummary() {
       alert('O comentário deve ter no máximo 50 caracteres.');
       return;
     }
+    
     setSubmitting(true);
     try {
-      const res = await fetch('http://192.168.1.1:8000/reviews/', {
+      const res = await fetch(`${API_BASE_URL}/reviews/?company_id=${companyId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -73,6 +85,7 @@ export default function ReviewsSummary() {
           comment: comment.trim(),
         }),
       });
+      
       if (res.ok) {
         setSuccessMsg('Avaliação enviada para aprovação!');
         setShowForm(false);
@@ -97,7 +110,6 @@ export default function ReviewsSummary() {
 
   return (
     <>
-            {/* Card de resumo */}
       <section className="relative overflow-hidden bg-black border border-white/[0.06] rounded-2xl p-4 flex items-center justify-between transition-all duration-300 hover:scale-[1.02] hover:border-white/[0.12] active:scale-[0.99] cursor-pointer">
         <div className="flex items-center gap-3">
           <div className="bg-amber-500/10 p-2.5 rounded-xl text-amber-400">
@@ -118,12 +130,10 @@ export default function ReviewsSummary() {
         </button>
       </section>
 
-      {/* MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-black flex items-center justify-center z-50 p-4">
           <div className="bg-black border border-zinc-800 rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
             
-            {/* Header */}
             <div className="flex items-center justify-between p-5 border-b border-zinc-800">
               <h2 className="text-lg font-bold flex items-center gap-2">
                 <Star size={20} className="text-amber-400" fill="currentColor" />
@@ -134,7 +144,6 @@ export default function ReviewsSummary() {
               </button>
             </div>
 
-            {/* Conteúdo */}
             <div className="p-5 space-y-4 overflow-y-auto max-h-[280px]">
               {loading ? (
                 <p className="text-center text-zinc-500 py-8">Carregando...</p>
@@ -166,7 +175,6 @@ export default function ReviewsSummary() {
               )}
             </div>
 
-            {/* Formulário de avaliação */}
             {showForm ? (
               <div className="p-5 border-t border-zinc-800 space-y-4">
                 <input
@@ -178,7 +186,6 @@ export default function ReviewsSummary() {
                   className="w-full bg-black p-3 rounded-xl border border-zinc-700 text-sm focus:outline-none focus:border-amber-500"
                 />
                 
-                {/* Estrelas clicáveis */}
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-zinc-400 mr-2">Nota:</span>
                   {[1, 2, 3, 4, 5].map((star) => (
@@ -247,7 +254,7 @@ export default function ReviewsSummary() {
                   Avaliar
                 </button>
                 <p className="text-center text-zinc-600 text-[10px] mt-2">
-                  Sua avaliação passará por aprovação antes de aparecer aqui.
+                  Obrigado pelo seu Fedback
                 </p>
               </div>
             )}

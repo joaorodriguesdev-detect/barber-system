@@ -1,5 +1,5 @@
-﻿# backend/app/models.py
-from datetime import datetime, time
+# backend/app/models.py
+from datetime import datetime, time, timezone
 from enum import Enum
 from typing import List, Optional
 from sqlmodel import Field, Relationship, SQLModel
@@ -26,6 +26,10 @@ class ServiceType(str, Enum):
     SOBRANCELHA = "Sobrancelha"
     COMBO_CABELO_BARBA = "Cabelo + Barba"
     COMBO_COMPLETO = "Completo (Cabelo + Barba + Sobrancelha)"
+class TenantStatus(str, Enum):
+    TRIAL = "trial"
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
 
 # ----------------------------------------------------------------
 # TABELAS / MODELOS (Multi-tenant)
@@ -37,8 +41,14 @@ class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     subdomain: str = Field(unique=True, index=True) 
-    data_cadastro: datetime = Field(default_factory=datetime.utcnow)
+    data_cadastro: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_active: bool = Field(default=True)
+    logo_url: Optional[str] = Field(default=None)
+    asaas_customer_id: Optional[str] = Field(default=None, index=True)
+    subscription_id: Optional[str] = Field(default=None, index=True)
+    status: TenantStatus = Field(default=TenantStatus.TRIAL, index=True)
+    trial_end: Optional[datetime] = Field(default=None)
+    subscription_end: Optional[datetime] = Field(default=None)
 
 class User(SQLModel, table=True):
     __tablename__ = "users"
@@ -99,7 +109,7 @@ class Service(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     company_id: int = Field(foreign_key="companies.id")
-    name: ServiceType = Field(index=True)
+    name: str = Field(index=True)
     description: Optional[str] = Field(default=None)
     price: float
     duration_minutes: int

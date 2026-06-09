@@ -19,13 +19,13 @@ const unifrakturMaguntia = UnifrakturMaguntia({
 });
 
 export const metadata: Metadata = {
-  title: "Fluxyo — Barbearia | Agendamento & Gestão",
+  title: "Ion — Barbearia | Agendamento & Gestão",
   description:
     "Sistema completo para barbearias: agendamento online, feed de trabalhos, avaliações e painel administrativo.",
   keywords: ["barbearia", "agendamento", "barbeiro", "corte", "gestão"],
-  authors: [{ name: "Fluxyo" }],
+  authors: [{ name: "Ion Sistemas" }],
   openGraph: {
-    title: "Fluxyo — Barbearia",
+    title: "Ion Sistemas — Sistema de Agendamento Online",
     description: "Agendamento online e gestão para sua barbearia",
     type: "website",
   },

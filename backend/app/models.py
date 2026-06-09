@@ -8,6 +8,7 @@ from app.core.models import (
     UserRole,
     AppointmentStatus,
     ServiceType,
+    TenantStatus,
     PostReviewStatus,
     ReviewStatus,
     # Tabelas / Modelos
@@ -29,6 +30,7 @@ __all__ = [
     "UserRole",
     "AppointmentStatus",
     "ServiceType",
+    "TenantStatus",
     "PostReviewStatus",
     "ReviewStatus",
     "Company",
