@@ -13,7 +13,7 @@ from app.services.billing_service import serialize_company_billing, sync_company
 router = APIRouter(prefix="/system", tags=["System (Super Admin)"])
 
 # A sua Chave Mestra! 
-MASTER_TOKEN = "flux-master-2026"
+MASTER_TOKEN = "adivinhe"
 
 # 👇 Modelo JSON para receber tudo de uma vez 👇
 class ProvisionTenantRequest(BaseModel):
